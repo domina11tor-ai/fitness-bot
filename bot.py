@@ -3,25 +3,18 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand
-from apscheduler.schedulers.asyncio import AsyncIOScheduler # Новый импорт
 
-TOKEN = "8695430253:AAGjaf_a9UwV0tS_v53sIx6t41I93GNE5cw"
+TOKEN ="8695430253:AAGjaf_a9UwV0tS_v53sIx6t41I93GNE5cw"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-scheduler = AsyncIOScheduler() # Инициализируем планировщик
 
 user_stats = {}
 
-# Функция сброса счетчиков
-def reset_all_stats():
-    user_stats.clear()
-    print("Статистика подходов обнулена.")
-
-# --- КЛАВИАТУРЫ ---
 def get_main_keyboard():
     kb = InlineKeyboardBuilder()
     kb.button(text="🚀 НАЧАТЬ ТРЕНИРОВКУ", callback_data="start_workout")
+    kb.button(text="🔄 Сбросить статистику", callback_data="reset_stats")
     kb.button(text="Понедельник", callback_data="day_mon")
     kb.button(text="Среда", callback_data="day_wed")
     kb.button(text="Пятница", callback_data="day_fri")
@@ -44,15 +37,19 @@ def get_rest_keyboard(exercise_code):
     kb.adjust(2, 1)
     return kb.as_markup()
 
-# --- ЛОГИКА ---
+@dp.callback_query(F.data == "reset_stats")
+async def reset_stats(callback: types.CallbackQuery):
+    user_stats[callback.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
+    await callback.message.answer("✅ Статистика сброшена!")
+
 @dp.callback_query(F.data == "start_workout")
 async def start_workout(callback: types.CallbackQuery):
     user_stats[callback.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
-    await callback.message.edit_text("Счетчик сброшен! Выбери день:", reply_markup=get_main_keyboard())
+    await callback.message.edit_text("Тренировка начата! Выбери день:", reply_markup=get_main_keyboard())
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Нажми 'Начать тренировку' или выбери день:", reply_markup=get_main_keyboard())
+    await message.answer("Привет! Выбери действие:", reply_markup=get_main_keyboard())
 
 @dp.callback_query(F.data.in_(["day_mon", "day_wed", "day_fri", "ex_menu"]))
 async def show_exercises(callback: types.CallbackQuery):
@@ -89,9 +86,7 @@ async def start_timer(callback: types.CallbackQuery):
     
     for i in range(seconds - 1, 0, -1):
         await asyncio.sleep(1)
-        try: 
-            await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, 
-                                      text=f"Таймер: {i} сек", reply_markup=kb.as_markup())
+        try: await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f"Таймер: {i} сек", reply_markup=kb.as_markup())
         except: break
         
     await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, 
@@ -99,10 +94,6 @@ async def start_timer(callback: types.CallbackQuery):
                                reply_markup=get_exercises_keyboard())
 
 async def main():
-    # Настраиваем планировщик: сброс каждый день в 00:00
-    scheduler.add_job(reset_all_stats, 'cron', hour=0, minute=0)
-    scheduler.start()
-    
     await bot.set_my_commands([BotCommand(command="start", description="Запустить тренировку")])
     await dp.start_polling(bot)
 
