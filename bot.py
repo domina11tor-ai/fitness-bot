@@ -3,13 +3,20 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand
+from apscheduler.schedulers.asyncio import AsyncIOScheduler # Новый импорт
 
-TOKEN = "8695430253:AAGjaf_a9UwV0tS_v53sIx6t41I93GNE5cw" # НЕ ЗАБУДЬ ВСТАВИТЬ ТОКЕН
+TOKEN = "8695430253:AAGjaf_a9UwV0tS_v53sIx6t41I93GNE5cw"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+scheduler = AsyncIOScheduler() # Инициализируем планировщик
 
-user_sets = {}
+user_stats = {}
+
+# Функция сброса счетчиков
+def reset_all_stats():
+    user_stats.clear()
+    print("Статистика подходов обнулена.")
 
 # --- КЛАВИАТУРЫ ---
 def get_main_keyboard():
@@ -29,10 +36,10 @@ def get_exercises_keyboard():
     kb.adjust(1)
     return kb.as_markup()
 
-def get_rest_keyboard():
+def get_rest_keyboard(exercise_code):
     kb = InlineKeyboardBuilder()
-    kb.button(text="Отдых 30 сек", callback_data="rest_30")
-    kb.button(text="Отдых 40 сек", callback_data="rest_40")
+    kb.button(text="Отдых 30 сек", callback_data=f"rest_30_{exercise_code}")
+    kb.button(text="Отдых 40 сек", callback_data=f"rest_40_{exercise_code}")
     kb.button(text="⬅️ К упражнениям", callback_data="ex_menu")
     kb.adjust(2, 1)
     return kb.as_markup()
@@ -40,12 +47,11 @@ def get_rest_keyboard():
 # --- ЛОГИКА ---
 @dp.callback_query(F.data == "start_workout")
 async def start_workout(callback: types.CallbackQuery):
-    user_sets[callback.message.chat.id] = 0
+    user_stats[callback.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
     await callback.message.edit_text("Счетчик сброшен! Выбери день:", reply_markup=get_main_keyboard())
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    user_sets[message.chat.id] = 0
     await message.answer("Привет! Нажми 'Начать тренировку' или выбери день:", reply_markup=get_main_keyboard())
 
 @dp.callback_query(F.data.in_(["day_mon", "day_wed", "day_fri", "ex_menu"]))
@@ -58,39 +64,46 @@ async def back_main(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("ex_"))
 async def show_ex(callback: types.CallbackQuery):
-    text = "Отжимания (15 раз)" if callback.data == "ex_push" else "Приседания (20 раз)"
-    await callback.message.edit_text(f"{text}\nВыбери время отдыха (подход засчитается автоматически):", 
-                                     reply_markup=get_rest_keyboard())
+    ex_code = callback.data.split("_")[1]
+    text = "Отжимания (15 раз)" if ex_code == "push" else "Приседания (20 раз)"
+    await callback.message.edit_text(f"{text}\nВыбери отдых:", reply_markup=get_rest_keyboard(ex_code))
 
 @dp.callback_query(F.data.startswith("rest_"))
 async def start_timer(callback: types.CallbackQuery):
+    parts = callback.data.split("_")
+    seconds = int(parts[1])
+    ex_code = parts[2]
+    
     chat_id = callback.message.chat.id
-    user_sets[chat_id] = user_sets.get(chat_id, 0) + 1
-    current_set = user_sets[chat_id]
-    seconds = int(callback.data.split("_")[1])
+    if chat_id not in user_stats: user_stats[chat_id] = {"ex_push": 0, "ex_squat": 0}
     
-    # Кнопка-счетчик
+    key = f"ex_{ex_code}"
+    user_stats[chat_id][key] += 1
+    current_count = user_stats[chat_id][key]
+    ex_name = "Отжиманий" if ex_code == "push" else "Приседаний"
+    
     kb = InlineKeyboardBuilder()
-    kb.button(text=f"✅ Подход №{current_set} завершен", callback_data="none")
+    kb.button(text=f"✅ {ex_name}: {current_count} подходов", callback_data="none")
     
-    msg = await callback.message.edit_text(f"Таймер отдыха: {seconds} сек", reply_markup=kb.as_markup())
+    msg = await callback.message.edit_text(f"Таймер: {seconds} сек", reply_markup=kb.as_markup())
     
     for i in range(seconds - 1, 0, -1):
         await asyncio.sleep(1)
         try: 
             await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, 
-                                      text=f"Таймер отдыха: {i} сек", reply_markup=kb.as_markup())
+                                      text=f"Таймер: {i} сек", reply_markup=kb.as_markup())
         except: break
         
     await bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, 
-                               text=f"Время вышло! Подход №{current_set} завершен.\nЧто делаем дальше?", 
+                               text=f"Время вышло! {ex_name} сделано: {current_count}.\nЧто дальше?", 
                                reply_markup=get_exercises_keyboard())
 
-async def set_main_menu(bot: Bot):
-    await bot.set_my_commands([BotCommand(command="start", description="Запустить тренировку")])
-
 async def main():
-    await set_main_menu(bot)
+    # Настраиваем планировщик: сброс каждый день в 00:00
+    scheduler.add_job(reset_all_stats, 'cron', hour=0, minute=0)
+    scheduler.start()
+    
+    await bot.set_my_commands([BotCommand(command="start", description="Запустить тренировку")])
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
