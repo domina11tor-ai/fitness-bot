@@ -4,13 +4,14 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand
 
-# ВАЖНО: Вставь сюда НОВЫЙ токен, полученный в @BotFather после /revoke
+# ВАЖНО: Вставь сюда НОВЫЙ токен из @BotFather (после /revoke)
+# Старый токен скомпрометирован и не будет работать
 TOKEN = "8695430253:AAHqsjId6hvsWDyOzhmjuc2V02mA5KRU8kI"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# {chat_id: {"ex_push": 0, "ex_squat": 0}}
+# Хранилище статистики
 user_stats = {}
 
 # --- КЛАВИАТУРЫ ---
@@ -40,27 +41,37 @@ async def start(msg: types.Message):
 
 @dp.callback_query(F.data == "back_main")
 async def back(call: types.CallbackQuery):
-    await call.answer() # Подтверждение для Telegram
+    await call.answer()
     await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "start_workout")
 async def start_w(call: types.CallbackQuery):
-    await call.answer() # Подтверждение для Telegram
+    await call.answer()
     user_stats[call.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
     await call.message.edit_text("Тренировка начата! Выбери упражнение:", reply_markup=get_ex_kb())
 
+# ОБРАБОТЧИК ДНЕЙ НЕДЕЛИ
+@dp.callback_query(F.data.startswith("day_"))
+async def day_handler(call: types.CallbackQuery):
+    await call.answer() # Остановка "зависания"
+    day_name = {"day_mon": "Понедельник", "day_wed": "Среда", "day_fri": "Пятница"}
+    await call.message.edit_text(
+        f"Программа на {day_name[call.data]}: ... (тут будет план)", 
+        reply_markup=get_main_kb()
+    )
+
 @dp.callback_query(F.data.startswith("ex_"))
 async def select_ex(call: types.CallbackQuery):
-    await call.answer() # Подтверждение для Telegram
+    await call.answer()
     ex = call.data.split("_")[1]
     kb = InlineKeyboardBuilder()
     kb.button(text="Отдых 30с", callback_data=f"rest_30_{ex}")
     kb.button(text="Отдых 40с", callback_data=f"rest_40_{ex}")
-    await call.message.edit_text("Выбери отдых:", reply_markup=kb.as_markup())
+    await call.message.edit_text("Выбери время отдыха:", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data.startswith("rest_"))
 async def timer(call: types.CallbackQuery):
-    await call.answer() # Подтверждение для Telegram
+    await call.answer()
     _, sec, ex = call.data.split("_")
     chat_id = call.message.chat.id
     user_stats.setdefault(chat_id, {"ex_push": 0, "ex_squat": 0})[f"ex_{ex}"] += 1
@@ -71,14 +82,14 @@ async def timer(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "show_results")
 async def results(call: types.CallbackQuery):
-    await call.answer() # Подтверждение для Telegram
+    await call.answer()
     stats = user_stats.get(call.message.chat.id, {"ex_push": 0, "ex_squat": 0})
     await call.message.edit_text(f"🏆 Итоги:\nОтжимания: {stats['ex_push']}\nПриседания: {stats['ex_squat']}", 
                                  reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "reset")
 async def reset(call: types.CallbackQuery):
-    await call.answer("Сброшено!", show_alert=True) # Всплывающее уведомление
+    await call.answer("Сброшено!", show_alert=True)
     user_stats[call.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
 
 async def main():
