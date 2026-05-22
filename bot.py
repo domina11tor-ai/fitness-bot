@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand
 
 # ВАЖНО: Вставь сюда НОВЫЙ токен, полученный в @BotFather после /revoke
-TOKEN = "8695430253:AAGiVNWJkEep0bFayaknef7fSJMShvb0BJs"
+TOKEN = "8695430253:AAHqsjId6hvsWDyOzhmjuc2V02mA5KRU8kI"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
