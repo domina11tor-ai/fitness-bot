@@ -2,17 +2,10 @@ import asyncio
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import BotCommand
 
-# ВАЖНО: Вставь сюда НОВЫЙ токен из @BotFather (после /revoke)
-# Старый токен скомпрометирован и не будет работать
-TOKEN = "8695430253:AAHqsjId6hvsWDyOzhmjuc2V02mA5KRU8kI"
-
+TOKEN = "8695430253:AAHqsjId6hvsWDyOzhmjuc2V02mA5KRU8kI" # Вставьте актуальный токен из BotFather
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
-# Хранилище статистики
-user_stats = {}
 
 # --- КЛАВИАТУРЫ ---
 def get_main_kb():
@@ -25,75 +18,52 @@ def get_main_kb():
     kb.adjust(1)
     return kb.as_markup()
 
-def get_ex_kb():
+# --- ОБРАБОТЧИКИ ---
+@dp.callback_query(F.data.startswith("day_"))
+async def day_handler(call: types.CallbackQuery):
+    await call.answer()
+    plans = {
+        "day_mon": "📅 Понедельник:\n- Отжимания: 3х15\n- Пресс: 3х20",
+        "day_wed": "📅 Среда:\n- Приседания: 3х20\n- Выпады: 3х12",
+        "day_fri": "📅 Пятница:\n- Отжимания: 4х12\n- Планка: 3х45 сек"
+    }
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⬅️ Назад", callback_data="back_main")
+    await call.message.edit_text(plans.get(call.data, "План не найден."), reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data == "start_workout")
+async def start_w(call: types.CallbackQuery):
+    await call.answer()
     kb = InlineKeyboardBuilder()
     kb.button(text="Отжимания", callback_data="ex_push")
     kb.button(text="Приседания", callback_data="ex_squat")
-    kb.button(text="🏁 ЗАВЕРШИТЬ", callback_data="show_results")
-    kb.button(text="⬅️ Меню", callback_data="back_main")
-    kb.adjust(1)
-    return kb.as_markup()
+    await call.message.edit_text("Выбери упражнение:", reply_markup=kb.as_markup())
 
-# --- ОБРАБОТЧИКИ ---
-@dp.message(Command("start"))
-async def start(msg: types.Message):
-    await msg.answer("Привет! Выбери действие:", reply_markup=get_main_kb())
+# ВЫБОР ВРЕМЕНИ ОТДЫХА (ТАЙМЕР)
+@dp.callback_query(F.data.startswith("ex_"))
+async def select_ex(call: types.CallbackQuery):
+    await call.answer()
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Отдых 5 сек", callback_data="timer_5")
+    kb.button(text="Отдых 10 сек", callback_data="timer_10")
+    await call.message.edit_text("Выбери время отдыха:", reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data.startswith("timer_"))
+async def run_timer(call: types.CallbackQuery):
+    await call.answer()
+    seconds = int(call.data.split("_")[1])
+    
+    await call.message.edit_text(f"⏳ Таймер запущен: {seconds} сек...")
+    await asyncio.sleep(seconds) # Здесь работает таймер
+    
+    await call.message.edit_text("✅ Время вышло! Готов к следующему подходу?", reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "back_main")
 async def back(call: types.CallbackQuery):
     await call.answer()
     await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
 
-@dp.callback_query(F.data == "start_workout")
-async def start_w(call: types.CallbackQuery):
-    await call.answer()
-    user_stats[call.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
-    await call.message.edit_text("Тренировка начата! Выбери упражнение:", reply_markup=get_ex_kb())
-
-# ОБРАБОТЧИК ДНЕЙ НЕДЕЛИ
-@dp.callback_query(F.data.startswith("day_"))
-async def day_handler(call: types.CallbackQuery):
-    await call.answer() # Остановка "зависания"
-    day_name = {"day_mon": "Понедельник", "day_wed": "Среда", "day_fri": "Пятница"}
-    await call.message.edit_text(
-        f"Программа на {day_name[call.data]}: ... (тут будет план)", 
-        reply_markup=get_main_kb()
-    )
-
-@dp.callback_query(F.data.startswith("ex_"))
-async def select_ex(call: types.CallbackQuery):
-    await call.answer()
-    ex = call.data.split("_")[1]
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Отдых 30с", callback_data=f"rest_30_{ex}")
-    kb.button(text="Отдых 40с", callback_data=f"rest_40_{ex}")
-    await call.message.edit_text("Выбери время отдыха:", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("rest_"))
-async def timer(call: types.CallbackQuery):
-    await call.answer()
-    _, sec, ex = call.data.split("_")
-    chat_id = call.message.chat.id
-    user_stats.setdefault(chat_id, {"ex_push": 0, "ex_squat": 0})[f"ex_{ex}"] += 1
-    
-    await call.message.edit_text(f"✅ Подход засчитан! Таймер: {sec}с...")
-    await asyncio.sleep(int(sec))
-    await call.message.edit_text("Время вышло! Выбери следующее:", reply_markup=get_ex_kb())
-
-@dp.callback_query(F.data == "show_results")
-async def results(call: types.CallbackQuery):
-    await call.answer()
-    stats = user_stats.get(call.message.chat.id, {"ex_push": 0, "ex_squat": 0})
-    await call.message.edit_text(f"🏆 Итоги:\nОтжимания: {stats['ex_push']}\nПриседания: {stats['ex_squat']}", 
-                                 reply_markup=get_main_kb())
-
-@dp.callback_query(F.data == "reset")
-async def reset(call: types.CallbackQuery):
-    await call.answer("Сброшено!", show_alert=True)
-    user_stats[call.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
-
 async def main():
-    await bot.set_my_commands([BotCommand(command="start", description="Старт")])
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
