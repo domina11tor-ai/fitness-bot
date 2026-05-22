@@ -4,8 +4,8 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand
 
-# ЗАМЕНИ "ТВОЙ_ТОКЕН" НА ТОКЕН, ПОЛУЧЕННЫЙ ПОСЛЕ REVOKE В BOTFATHER
-TOKEN = "8695430253:AAF1IR-ZYmrQ0PcdSgNxVD8yGxEhd-Jk3bA"
+# ВАЖНО: Вставь сюда НОВЫЙ токен, полученный в @BotFather после /revoke
+TOKEN = "8695430253:AAGiVNWJkEep0bFayaknef7fSJMShvb0BJs"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -40,18 +40,18 @@ async def start(msg: types.Message):
 
 @dp.callback_query(F.data == "back_main")
 async def back(call: types.CallbackQuery):
-    await call.answer()
+    await call.answer() # Подтверждение для Telegram
     await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "start_workout")
 async def start_w(call: types.CallbackQuery):
-    await call.answer()
+    await call.answer() # Подтверждение для Telegram
     user_stats[call.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
     await call.message.edit_text("Тренировка начата! Выбери упражнение:", reply_markup=get_ex_kb())
 
 @dp.callback_query(F.data.startswith("ex_"))
 async def select_ex(call: types.CallbackQuery):
-    await call.answer()
+    await call.answer() # Подтверждение для Telegram
     ex = call.data.split("_")[1]
     kb = InlineKeyboardBuilder()
     kb.button(text="Отдых 30с", callback_data=f"rest_30_{ex}")
@@ -60,7 +60,7 @@ async def select_ex(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("rest_"))
 async def timer(call: types.CallbackQuery):
-    await call.answer()
+    await call.answer() # Подтверждение для Telegram
     _, sec, ex = call.data.split("_")
     chat_id = call.message.chat.id
     user_stats.setdefault(chat_id, {"ex_push": 0, "ex_squat": 0})[f"ex_{ex}"] += 1
@@ -71,14 +71,14 @@ async def timer(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "show_results")
 async def results(call: types.CallbackQuery):
-    await call.answer()
+    await call.answer() # Подтверждение для Telegram
     stats = user_stats.get(call.message.chat.id, {"ex_push": 0, "ex_squat": 0})
     await call.message.edit_text(f"🏆 Итоги:\nОтжимания: {stats['ex_push']}\nПриседания: {stats['ex_squat']}", 
                                  reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "reset")
 async def reset(call: types.CallbackQuery):
-    await call.answer("Сброшено!", show_alert=True)
+    await call.answer("Сброшено!", show_alert=True) # Всплывающее уведомление
     user_stats[call.message.chat.id] = {"ex_push": 0, "ex_squat": 0}
 
 async def main():
