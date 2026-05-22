@@ -1,4 +1,4 @@
-  import asyncio
+import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
