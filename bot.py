@@ -4,12 +4,13 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import BotCommand
 
-# ЗАМЕНИ НА НОВЫЙ ТОКЕН ИЗ BOTFATHER!
+# ЗАМЕНИ "ТВОЙ_ТОКЕН" НА ТОКЕН, ПОЛУЧЕННЫЙ ПОСЛЕ REVOKE В BOTFATHER
 TOKEN = "8695430253:AAF1IR-ZYmrQ0PcdSgNxVD8yGxEhd-Jk3bA"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# {chat_id: {"ex_push": 0, "ex_squat": 0}}
 user_stats = {}
 
 # --- КЛАВИАТУРЫ ---
@@ -86,4 +87,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
