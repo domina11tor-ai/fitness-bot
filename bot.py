@@ -109,7 +109,7 @@ async def set_timer(call: types.CallbackQuery):
 async def run_timer(call: types.CallbackQuery):
     data = call.data.split("_")
     sec, day, idx = int(data[1]), data[2], data[3]
-    add_xp(call.from_user.id, 25) # +25 XP за подход
+    add_xp(call.from_user.id, 25)
     
     for i in range(sec, 0, -5):
         try:
@@ -148,7 +148,6 @@ async def motiv(call: types.CallbackQuery):
 async def back(call: types.CallbackQuery):
     await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
 
-# --- SERVER ---
 async def main():
     app = web.Application()
     runner = web.AppRunner(app)
@@ -158,5 +157,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-Презентация по вашему боту "Fitness Bot Pro" готова! Теперь вы можете ознакомиться с архитектурой и функционалом. Дайте знать, если нужно добавить квизы или дуэли в следующий апдейт.
