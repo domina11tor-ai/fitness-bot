@@ -1,9 +1,12 @@
 import asyncio
+import os  # <--- ДОБАВЛЕНО ДЛЯ БЕЗОПАСНОСТИ
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-TOKEN = "8695430253:AAGr0mCofNEAxGN7lWeAADiEFj7hTfKmbpw"
+# ТЕПЕРЬ БЕЗОПАСНО: Бот берет токен из скрытых настроек Render, а не из кода!
+TOKEN = os.getenv("BOT_TOKEN")
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -19,6 +22,10 @@ def get_main_kb():
     return kb.as_markup()
 
 # --- ОБРАБОТЧИКИ ---
+@dp.message(Command("start"))
+async def start(msg: types.Message):
+    await msg.answer("Привет! Выбери действие:", reply_markup=get_main_kb())
+
 @dp.callback_query(F.data.startswith("day_"))
 async def day_handler(call: types.CallbackQuery):
     await call.answer()
@@ -52,16 +59,18 @@ async def select_ex(call: types.CallbackQuery):
 async def run_timer(call: types.CallbackQuery):
     await call.answer()
     seconds = int(call.data.split("_")[1])
-    
     await call.message.edit_text(f"⏳ Таймер запущен: {seconds} сек...")
-    await asyncio.sleep(seconds) # Здесь работает таймер
-    
+    await asyncio.sleep(seconds)
     await call.message.edit_text("✅ Время вышло! Готов к следующему подходу?", reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "back_main")
 async def back(call: types.CallbackQuery):
     await call.answer()
     await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
+
+@dp.callback_query(F.data == "reset")
+async def reset(call: types.CallbackQuery):
+    await call.answer("Сброшено!", show_alert=True)
 
 async def main():
     await dp.start_polling(bot)
