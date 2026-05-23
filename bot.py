@@ -23,7 +23,7 @@ DAY_NAMES = {
     "day_sun": "Воскресенье"
 }
 
-# ПОЛНАЯ ПРОГРАММА НА 7 ДНЕЙ С БОЛГАРСКИМИ ПРИСЕДАНИЯМИ
+# ПОЛНАЯ ПРОГРАММА НА 7 ДНЕЙ
 EXERCISES_BY_DAY = {
     "day_mon": {"push": "Отжимания 4х15-20", "press_db": "Жим гантелей лежа 4х15-20", "narrow": "Узкие отжимания 4х15-20"},
     "day_tue": {"row_db": "Тяга гантели к поясу 4х15-20", "hammer": "Молотковые сгибания 4х15-20", "biceps": "Классический бицепс 4х15-20"},
@@ -53,7 +53,7 @@ def get_days_kb():
     kb.button(text="СБ (Грудь/Ноги)", callback_data="workout_day_sat")
     kb.button(text="ВС (Восстановление)", callback_data="workout_day_sun")
     kb.button(text="⬅️ Главное меню", callback_data="back_main")
-    kb.adjust(2, 2, 2, 1, 1) # Красивое распределение кнопок по парам
+    kb.adjust(2, 2, 2, 1, 1)
     return kb.as_markup()
 
 def get_exercises_kb(day_key, chat_id):
@@ -63,9 +63,9 @@ def get_exercises_kb(day_key, chat_id):
     
     for ex_id, ex_name in exercises.items():
         count = day_stats.get(f"ex_{ex_id}", 0)
-        # Динамический счетчик выполненных упражнений (+1 подх.)
         btn_text = f"{ex_name} ✅ {count}" if count > 0 else ex_name
-        kb.button(text=btn_text, callback_data=f"run_ex_{ex_id}_{day_key}")
+        # Используем двоеточие (:) как разделитель, чтобы не было путаницы с подчеркиваниями
+        kb.button(text=btn_text, callback_data=f"run_ex:{ex_id}:{day_key}")
         
     kb.button(text="🏁 Завершить тренировку", callback_data="back_main")
     kb.adjust(1)
@@ -123,34 +123,33 @@ async def start_exercises(call: types.CallbackQuery):
         reply_markup=get_exercises_kb(day_key, chat_id)
     )
 
-@dp.callback_query(F.data.startswith("run_ex_"))
+# ТЕПЕРЬ ЛОВИМ ДВОЕТОЧИЕ И РАЗБИВАЕМ ПО НЕМУ
+@dp.callback_query(F.data.startswith("run_ex:"))
 async def select_timer(call: types.CallbackQuery):
     await call.answer()
-    parts = call.data.replace("run_ex_", "").split("_")
-    ex_id = parts[0] 
-    day_key = f"{parts[1]}_{parts[2]}" 
+    parts = call.data.split(":")
+    ex_id = parts[1] 
+    day_key = parts[2] 
     
     kb = InlineKeyboardBuilder()
-    # ТАЙМЕРЫ ИЗМЕНЕНЫ НА 30 И 40 СЕКУНД ПО ЗАПРОСУ Пользователя
-    kb.button(text="⏱ Отдых 30 сек", callback_data=f"t_30_{ex_id}_{day_key}") 
-    kb.button(text="⏱ Отдых 40 сек", callback_data=f"t_40_{ex_id}_{day_key}") 
+    kb.button(text="⏱ Отдых 30 сек", callback_data=f"t:30:{ex_id}:{day_key}") 
+    kb.button(text="⏱ Отдых 40 сек", callback_data=f"t:40:{ex_id}:{day_key}") 
     kb.button(text="⬅️ Назад к упражнениям", callback_data=f"start_ex_{day_key}")
     kb.adjust(1)
     
     await call.message.edit_text("Подход выполнен! Сколько будем отдыхать?", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data.startswith("t_"))
+@dp.callback_query(F.data.startswith("t:"))
 async def run_timer(call: types.CallbackQuery):
     await call.answer()
     
-    parts = call.data.split("_")
+    parts = call.data.split(":")
     seconds = int(parts[1])
     ex_id = parts[2] 
-    day_key = f"{parts[3]}_{parts[4]}" 
+    day_key = parts[3] 
     
     chat_id = call.message.chat.id
     
-    # Засчитываем выполненный подход
     if chat_id not in user_stats:
         user_stats[chat_id] = {}
     if day_key not in user_stats[chat_id]:
@@ -162,9 +161,9 @@ async def run_timer(call: types.CallbackQuery):
         
     user_stats[chat_id][day_key][ex_key] += 1
     current_sets = user_stats[chat_id][day_key][ex_key]
-    ex_name = EXERCISES_BY_DAY[day_key][ex_id].split(" ")[0] # Вычленяем имя упражнения
+    
+    ex_name = EXERCISES_BY_DAY[day_key][ex_id].split(" ")[0] 
 
-    # Живой таймер обратного отсчета с шагом в 5 секунд
     step = 5
     for remaining in range(seconds, 0, -step):
         try:
@@ -175,7 +174,6 @@ async def run_timer(call: types.CallbackQuery):
             pass
         await asyncio.sleep(step)
     
-    # Возвращаем пользователя к списку упражнений дня
     await call.message.edit_text(
         f"💪 Время отдыха вышло! Продолжаем тренировку за {DAY_NAMES.get(day_key)}.\nВыбери упражнение:", 
         reply_markup=get_exercises_kb(day_key, chat_id)
