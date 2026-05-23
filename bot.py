@@ -1,44 +1,84 @@
 import asyncio
+import os
 import logging
+import random
+import google.generativeai as genai
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import os
+from aiohttp import web
 
-# Настройка логирования
+# Логирование
 logging.basicConfig(level=logging.INFO)
 
-# Получаем токен из переменных окружения
+# Конфигурация
 TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") 
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Клавиатура главного меню
+# Инициализация Gemini
+genai.configure(api_key=GEMINI_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# --- КЛАВИАТУРА ---
 def get_main_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="🚀 Тренировка", callback_data="start_workout")
     kb.button(text="⚖️ Вес", callback_data="weight_menu")
+    kb.button(text="💡 Мотивация", callback_data="get_motivation")
     kb.adjust(2)
     return kb.as_markup()
 
-# Обработка команды /start
+# --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
 async def start(msg: types.Message):
-    await msg.answer("🔥 Бот готов! Выбери действие:", reply_markup=get_main_kb())
+    await msg.answer("🔥 Fitness Pro Webhook активен! Используй /ask [вопрос] для ИИ.", reply_markup=get_main_kb())
 
-# Обработка кнопки "Тренировка"
+@dp.message(Command("ask"))
+async def ask_ai(msg: types.Message):
+    query = msg.text.replace("/ask", "").strip()
+    if not query:
+        await msg.answer("Напиши вопрос, например: /ask как качать пресс?")
+        return
+    await msg.answer("⏳ Думаю...")
+    response = model.generate_content(query)
+    await msg.answer(response.text)
+
 @dp.callback_query(F.data == "start_workout")
-async def workout_handler(call: types.CallbackQuery):
-    # ОБЯЗАТЕЛЬНО отвечаем на callback, чтобы убрать "часики" с кнопки
+async def workout(call: types.CallbackQuery):
     await call.answer()
-    await call.message.edit_text("🏋️ Раздел тренировок!", reply_markup=get_main_kb())
+    await call.message.edit_text("🏋️ Раздел тренировок: выбери программу или спроси AI!", reply_markup=get_main_kb())
 
-# --- ЗАПУСК БОТА ---
+@dp.callback_query(F.data == "get_motivation")
+async def motivation(call: types.CallbackQuery):
+    quotes = ["Боль — это временно!", "Ты машина!", "Дисциплина — всё!"]
+    await call.answer(random.choice(quotes), show_alert=True)
+
+# --- WEBHOOK ЛОГИКА ---
+async def handle_webhook(request):
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.feed_update(bot, update)
+    return web.Response(status=200)
+
 async def main():
-    # Удаляем вебхук при старте, чтобы Polling заработал без ошибок
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("Бот успешно запущен в режиме Polling...")
-    await dp.start_polling(bot)
+    app = web.Application()
+    app.router.add_post(f'/{TOKEN}', handle_webhook)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    # Установка вебхука
+    await bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+    logging.info(f"Webhook set to {WEBHOOK_URL}/{TOKEN}")
+    
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
