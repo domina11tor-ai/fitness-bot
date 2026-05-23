@@ -1,7 +1,6 @@
 import asyncio
 import os
 import logging
-import random
 import google.generativeai as genai
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -11,7 +10,6 @@ from aiohttp import web
 # Логирование
 logging.basicConfig(level=logging.INFO)
 
-# Конфигурация
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL") 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
@@ -19,45 +17,40 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Инициализация Gemini
+# ИИ
 genai.configure(api_key=GEMINI_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- КЛАВИАТУРА ---
+# Клавиатуры
 def get_main_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="🚀 Тренировка", callback_data="start_workout")
     kb.button(text="⚖️ Вес", callback_data="weight_menu")
-    kb.button(text="💡 Мотивация", callback_data="get_motivation")
     kb.adjust(2)
     return kb.as_markup()
 
-# --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
 async def start(msg: types.Message):
-    await msg.answer("🔥 Fitness Pro Webhook активен! Используй /ask [вопрос] для ИИ.", reply_markup=get_main_kb())
+    await msg.answer("Бот онлайн! Используй /ask для ИИ.", reply_markup=get_main_kb())
 
 @dp.message(Command("ask"))
 async def ask_ai(msg: types.Message):
     query = msg.text.replace("/ask", "").strip()
     if not query:
-        await msg.answer("Напиши вопрос, например: /ask как качать пресс?")
+        await msg.answer("Напиши вопрос после /ask")
         return
     await msg.answer("⏳ Думаю...")
-    response = model.generate_content(query)
-    await msg.answer(response.text)
+    try:
+        response = model.generate_content(query)
+        await msg.answer(response.text)
+    except Exception as e:
+        await msg.answer(f"Ошибка ИИ: {e}")
 
 @dp.callback_query(F.data == "start_workout")
 async def workout(call: types.CallbackQuery):
-    await call.answer()
-    await call.message.edit_text("🏋️ Раздел тренировок: выбери программу или спроси AI!", reply_markup=get_main_kb())
+    await call.answer("Загрузка...")
+    await call.message.answer("🏋️ Раздел тренировок открыт!")
 
-@dp.callback_query(F.data == "get_motivation")
-async def motivation(call: types.CallbackQuery):
-    quotes = ["Боль — это временно!", "Ты машина!", "Дисциплина — всё!"]
-    await call.answer(random.choice(quotes), show_alert=True)
-
-# --- WEBHOOK ЛОГИКА ---
 async def handle_webhook(request):
     data = await request.json()
     update = types.Update(**data)
@@ -65,18 +58,20 @@ async def handle_webhook(request):
     return web.Response(status=200)
 
 async def main():
+    # Удаляем вебхук, чтобы "обнулить" состояние
+    await bot.delete_webhook(drop_pending_updates=True)
+    
     app = web.Application()
     app.router.add_post(f'/{TOKEN}', handle_webhook)
     
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
     await site.start()
     
-    # Установка вебхука
+    # Установка нового вебхука
     await bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-    logging.info(f"Webhook set to {WEBHOOK_URL}/{TOKEN}")
+    print(f"Webhook установлен на {WEBHOOK_URL}/{TOKEN}")
     
     await asyncio.Event().wait()
 
