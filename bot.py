@@ -64,6 +64,7 @@ def get_main_kb():
     kb.button(text="🚀 Тренировка", callback_data="start_workout")
     kb.button(text="⚖️ Вес", callback_data="weight_menu")
     kb.button(text="📊 Статистика", callback_data="show_stats")
+    kb.button(text="🎮 Игры", callback_data="games_menu")
     kb.button(text="💡 Мотивация", callback_data="get_motivation")
     kb.button(text="🔴 YT Music", url="https://music.youtube.com/")
     kb.adjust(2)
@@ -72,7 +73,7 @@ def get_main_kb():
 # --- ОБРАБОТЧИКИ ---
 @dp.message(Command("start"))
 async def start(msg: types.Message):
-    await msg.answer("🔥 Fitness Pro готов к работе! Выбери действие:", reply_markup=get_main_kb())
+    await msg.answer("🔥 Добро пожаловать в Fitness Pro! Выбери действие:", reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "start_workout")
 async def workout_days(call: types.CallbackQuery):
@@ -102,25 +103,26 @@ async def set_timer(call: types.CallbackQuery):
     kb.button(text="⏱ 40 сек", callback_data=f"run_40_{day}_{idx}")
     kb.button(text="⬅️ Назад", callback_data=f"day_{day}")
     kb.adjust(2, 1)
-    await call.message.edit_text(f"Подход: {EXERCISES[day][int(idx)]}.\nСколько отдыхаем?", reply_markup=kb.as_markup())
+    await call.message.edit_text(f"Выполни подход {EXERCISES[day][int(idx)]}.\nСколько отдыхаем?", reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data.startswith("run_"))
 async def run_timer(call: types.CallbackQuery):
     data = call.data.split("_")
     sec, day, idx = int(data[1]), data[2], data[3]
-    add_xp(call.from_user.id, 25) 
+    add_xp(call.from_user.id, 25)
     
-    msg = await call.message.edit_text(f"⏳ Отдых: {sec} сек...")
-    for i in range(sec - 5, 0, -5):
-        await asyncio.sleep(5)
-        await msg.edit_text(f"⏳ Отдых: {i} сек...")
+    for i in range(sec, 0, -5):
+        try:
+            await call.message.edit_text(f"⏳ Отдых: {i} секунд...")
+            await asyncio.sleep(5)
+        except: pass
     
-    await call.answer("💪 Время вышло! Пора за работу!", show_alert=True)
+    await call.answer("💪 Время вышло! В бой!", show_alert=True)
     await workout_ex(call)
 
 @dp.callback_query(F.data == "weight_menu")
 async def weight_prompt(call: types.CallbackQuery):
-    await call.message.edit_text("Введите ваш вес (число, например 78.5):")
+    await call.message.edit_text("Введите ваш вес (просто число, например 78.5):")
 
 @dp.message(F.text.regexp(r'^\d+(\.\d+)?$'))
 async def weight_save(msg: types.Message):
@@ -139,14 +141,13 @@ async def stats(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "get_motivation")
 async def motiv(call: types.CallbackQuery):
-    q = ["Боль сегодня — сила завтра!", "Дисциплина — ключ к успеху.", "Не сдавайся, ты уже ближе к цели!"]
+    q = ["Боль сегодня — сила завтра!", "Дисциплина важнее мотивации.", "Не сдавайся!"]
     await call.answer(random.choice(q), show_alert=True)
 
 @dp.callback_query(F.data == "back_main")
 async def back(call: types.CallbackQuery):
     await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
 
-# --- SERVER ---
 async def main():
     app = web.Application()
     runner = web.AppRunner(app)
