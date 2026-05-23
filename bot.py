@@ -7,75 +7,77 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 
-# Получаем токен из переменных окружения
 TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Инициализация БД
+# --- БАЗА ДАННЫХ И УПРАЖНЕНИЯ ---
 def init_db():
     conn = sqlite3.connect("fitness_bot.db")
     cursor = conn.cursor()
     cursor.execute("""CREATE TABLE IF NOT EXISTS users 
-                      (user_id INTEGER PRIMARY KEY, xp INTEGER DEFAULT 0, weight REAL DEFAULT 0, level INTEGER DEFAULT 1)""")
+                      (user_id INTEGER PRIMARY KEY, xp INTEGER DEFAULT 0, weight REAL DEFAULT 0)""")
     conn.commit()
     conn.close()
 
 init_db()
 
-# Клавиатура
+# Список упражнений по дням
+EXERCISES = {
+    "mon": ["Отжимания", "Жим гантелей"],
+    "tue": ["Приседания", "Выпады"],
+    "wed": ["Планка", "Скручивания"],
+}
+
+# --- КЛАВИАТУРЫ ---
 def get_main_kb():
     kb = InlineKeyboardBuilder()
     kb.button(text="🚀 Тренировка", callback_data="start_workout")
     kb.button(text="⚖️ Вес", callback_data="weight_menu")
-    kb.button(text="🎮 Игра", callback_data="start_game")
     kb.button(text="💡 Мотивация", callback_data="get_motivation")
     kb.adjust(2)
     return kb.as_markup()
 
 # --- ОБРАБОТЧИКИ ---
-
 @dp.message(Command("start"))
 async def start(msg: types.Message):
-    await msg.answer("Привет! Выбери действие:", reply_markup=get_main_kb())
+    await msg.answer("🔥 Fitness Pro готов! Выбери действие:", reply_markup=get_main_kb())
 
+# 1. Выбор дня
 @dp.callback_query(F.data == "start_workout")
-async def start_workout(call: types.CallbackQuery):
-    await call.message.edit_text("🏋️ Раздел тренировок!", reply_markup=get_main_kb())
+async def workout_days(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    for day_code in EXERCISES.keys():
+        kb.button(text=day_code.upper(), callback_data=f"day_{day_code}")
+    kb.button(text="⬅️ Назад", callback_data="back_main")
+    await call.message.edit_text("📅 Выбери день недели:", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data == "weight_menu")
-async def weight_menu(call: types.CallbackQuery):
-    await call.message.edit_text("Введите ваш текущий вес цифрой (например: 80):")
+# 2. Выбор упражнения конкретного дня
+@dp.callback_query(F.data.startswith("day_"))
+async def show_exercises(call: types.CallbackQuery):
+    day = call.data.split("_")[1]
+    kb = InlineKeyboardBuilder()
+    for ex in EXERCISES[day]:
+        kb.button(text=ex, callback_data="none") # Пока просто текст
+    kb.button(text="⬅️ Назад", callback_data="start_workout")
+    kb.adjust(1)
+    await call.message.edit_text(f"🏋️ Упражнения на {day.upper()}:", reply_markup=kb.as_markup())
 
-# Обработка ввода веса
-@dp.message(F.text.regexp(r'^\d+(\.\d+)?$'))
-async def save_weight(msg: types.Message):
-    weight = float(msg.text)
-    conn = sqlite3.connect("fitness_bot.db")
-    cursor = conn.cursor()
-    # Используем UPDATE, чтобы не затереть остальные данные (xp, level)
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (msg.from_user.id,))
-    cursor.execute("UPDATE users SET weight = ? WHERE user_id = ?", (weight, msg.from_user.id))
-    conn.commit()
-    conn.close()
-    await msg.answer(f"✅ Вес {weight} кг сохранен!", reply_markup=get_main_kb())
+# --- УТИЛИТЫ ---
+@dp.callback_query(F.data == "back_main")
+async def back(call: types.CallbackQuery):
+    await call.message.edit_text("Главное меню:", reply_markup=get_main_kb())
 
 @dp.callback_query(F.data == "get_motivation")
 async def get_motivation(call: types.CallbackQuery):
-    quotes = ["Боль — это временно!", "Дисциплина — ключ к успеху!"]
-    await call.answer(random.choice(quotes), show_alert=True)
+    await call.answer(random.choice(["Двигайся!", "Ты сможешь!"]), show_alert=True)
 
 # --- ЗАПУСК ---
-
 async def main():
-    # Запуск сервера для Render
     app = web.Application()
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
-    await site.start()
-    
-    # Запуск polling
+    await web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000))).start()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
