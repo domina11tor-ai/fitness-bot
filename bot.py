@@ -3,8 +3,9 @@ import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiohttp import web # <--- Новая библиотека для сервера-заглушки
+from aiohttp import web 
 
+# Возвращаем BOT_TOKEN, раз в Render указано так
 TOKEN = os.getenv("BOT_TOKEN") 
 
 bot = Bot(token=TOKEN)
@@ -19,10 +20,11 @@ DAY_NAMES = {
     "day_fri": "Пятница"
 }
 
+# Подходы и повторения добавлены прямо на кнопки
 EXERCISES_BY_DAY = {
-    "day_mon": {"push": "Отжимания", "abs": "Пресс"},
-    "day_wed": {"squat": "Приседания", "lunge": "Выпады"},
-    "day_fri": {"push": "Отжимания", "plank": "Планка"}
+    "day_mon": {"push": "Отжимания 3х15", "abs": "Пресс 3х20"},
+    "day_wed": {"squat": "Приседания 3х20", "lunge": "Выпады 3х12"},
+    "day_fri": {"push": "Отжимания 4х12", "plank": "Планка 3х45 сек"}
 }
 
 # --- КЛАВИАТУРЫ ---
@@ -180,13 +182,11 @@ async def start_dummy_server():
     app.router.add_get('/', handle_ping)
     runner = web.AppRunner(app)
     await runner.setup()
-    # Render передает свой порт в переменную PORT
     port = int(os.environ.get("PORT", 10000)) 
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
 async def main():
-    # Одновременно запускаем и сервер-заглушку, и самого бота
     await asyncio.gather(
         start_dummy_server(),
         dp.start_polling(bot)
