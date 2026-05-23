@@ -19,7 +19,7 @@ dp = Dispatcher()
 
 # Инициализация Gemini (меняем модель на gemini-pro)
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 def get_main_kb():
     kb = InlineKeyboardBuilder()
