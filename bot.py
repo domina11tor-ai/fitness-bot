@@ -1,75 +1,40 @@
-import asyncio
-import os
-import logging
-import google.generativeai as genai
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiohttp import web
+# ... (оставляем импорты и инициализацию как есть) ...
 
-# Логирование
-logging.basicConfig(level=logging.INFO)
+# 1. Добавляем список упражнений
+WORKOUTS = {
+    "push": "💪 Отжимания (3 подхода по 15 раз)",
+    "squat": "🦵 Приседания (4 подхода по 20 раз)",
+    "press": "🔥 Пресс (3 подхода по 30 секунд)"
+}
 
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL") 
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
-
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
-
-# Инициализация Gemini (меняем модель на gemini-pro)
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-def get_main_kb():
+# 2. Обновленное меню тренировок
+def get_workout_kb():
     kb = InlineKeyboardBuilder()
-    kb.button(text="🚀 Тренировка", callback_data="start_workout")
-    kb.button(text="⚖️ Вес", callback_data="weight_menu")
-    kb.adjust(2)
+    kb.button(text="Отжимания", callback_data="w_push")
+    kb.button(text="Приседания", callback_data="w_squat")
+    kb.button(text="Пресс", callback_data="w_press")
+    kb.button(text="⬅️ Назад", callback_data="back_main")
+    kb.adjust(1)
     return kb.as_markup()
 
-# Обработка /start
-@dp.message(Command("start"))
-async def start(msg: types.Message):
-    await msg.answer("🔥 Fitness Pro готов!", reply_markup=get_main_kb())
-
-# Обработка ИИ
-@dp.message(Command("ask"))
-async def ask_ai(msg: types.Message):
-    query = msg.text.replace("/ask", "").strip()
-    if not query:
-        await msg.answer("Напиши вопрос, например: /ask как качать пресс?")
-        return
-    await msg.answer("⏳ Думаю...")
-    try:
-        response = model.generate_content(query)
-        await msg.answer(response.text)
-    except Exception as e:
-        await msg.answer(f"Ошибка ИИ: {e}")
-
-# Обработка кнопок (исправлено на edit_text)
+# 3. Обработчик нажатия на "Тренировка" (показывает список)
 @dp.callback_query(F.data == "start_workout")
-async def workout(call: types.CallbackQuery):
+async def workout_list(call: types.CallbackQuery):
     await call.answer()
-    # Теперь текст будет меняться, а не спамиться новыми сообщениями
-    await call.message.edit_text("🏋️ Раздел тренировок: выбери упражнение!", reply_markup=get_main_kb())
+    await call.message.edit_text("🏋️ Выбери упражнение:", reply_markup=get_workout_kb())
 
-async def handle_webhook(request):
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.feed_update(bot, update)
-    return web.Response(status=200)
+# 4. Обработчик конкретного упражнения
+@dp.callback_query(F.data.startswith("w_"))
+async def show_exercise(call: types.CallbackQuery):
+    workout_key = call.data.split("_")[1]
+    text = WORKOUTS.get(workout_key, "Упражнение не найдено")
+    await call.answer()
+    await call.message.edit_text(f"{text}\n\nЧто дальше?", reply_markup=get_workout_kb())
 
-async def main():
-    app = web.Application()
-    app.router.add_post(f'/{TOKEN}', handle_webhook)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000)))
-    await site.start()
-    
-    await bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-    await asyncio.Event().wait()
+# 5. Кнопка "Назад"
+@dp.callback_query(F.data == "back_main")
+async def back_to_main(call: types.CallbackQuery):
+    await call.answer()
+    await call.message.edit_text("🔥 Fitness Pro готов!", reply_markup=get_main_kb())
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# ... (остальной код main и webhook остается без изменений) ...
