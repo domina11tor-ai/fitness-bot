@@ -1,52 +1,44 @@
 import asyncio
-import os
 import logging
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message
-from aiohttp import web
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+import os
 
-# Логирование
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Переменные из Render
+# Получаем токен из переменных окружения
 TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Например: https://твое-имя.onrender.com
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# Клавиатура главного меню
+def get_main_kb():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚀 Тренировка", callback_data="start_workout")
+    kb.button(text="⚖️ Вес", callback_data="weight_menu")
+    kb.adjust(2)
+    return kb.as_markup()
+
+# Обработка команды /start
 @dp.message(Command("start"))
-async def start(msg: Message):
-    await msg.answer("Привет! Бот запущен через Webhook и готов к работе.")
+async def start(msg: types.Message):
+    await msg.answer("🔥 Бот готов! Выбери действие:", reply_markup=get_main_kb())
 
-async def handle_webhook(request):
-    """Обработчик входящих обновлений от Telegram"""
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.feed_update(bot, update)
-    return web.Response(status=200)
+# Обработка кнопки "Тренировка"
+@dp.callback_query(F.data == "start_workout")
+async def workout_handler(call: types.CallbackQuery):
+    # ОБЯЗАТЕЛЬНО отвечаем на callback, чтобы убрать "часики" с кнопки
+    await call.answer()
+    await call.message.edit_text("🏋️ Раздел тренировок!", reply_markup=get_main_kb())
 
+# --- ЗАПУСК БОТА ---
 async def main():
-    app = web.Application()
-    # Роут будет выглядеть как /<TOKEN>
-    app.router.add_post(f'/{TOKEN}', handle_webhook)
-    
-    runner = web.AppRunner(app)
-    await runner.setup()
-    
-    # Порт для Render
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    
-    # Установка вебхука
-    webhook_url = f"{WEBHOOK_URL}/{TOKEN}"
-    await bot.set_webhook(webhook_url)
-    logging.info(f"Webhook set to {webhook_url}")
-    
-    # Вечное ожидание
-    await asyncio.Event().wait()
+    # Удаляем вебхук при старте, чтобы Polling заработал без ошибок
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("Бот успешно запущен в режиме Polling...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
