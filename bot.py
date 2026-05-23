@@ -5,7 +5,6 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web 
 
-# Возвращаем BOT_TOKEN, раз в Render указано так
 TOKEN = os.getenv("BOT_TOKEN") 
 
 bot = Bot(token=TOKEN)
@@ -20,7 +19,6 @@ DAY_NAMES = {
     "day_fri": "Пятница"
 }
 
-# Подходы и повторения добавлены прямо на кнопки
 EXERCISES_BY_DAY = {
     "day_mon": {"push": "Отжимания 3х15", "abs": "Пресс 3х20"},
     "day_wed": {"squat": "Приседания 3х20", "lunge": "Выпады 3х12"},
@@ -45,11 +43,19 @@ def get_days_kb():
     kb.adjust(1)
     return kb.as_markup()
 
-def get_exercises_kb(day_key):
+# ТЕПЕРЬ КЛАВИАТУРА УПРАЖНЕНИЙ ЗНАЕТ, СКОЛЬКО ПОДХОДОВ ВЫ СДЕЛАЛИ
+def get_exercises_kb(day_key, chat_id):
     kb = InlineKeyboardBuilder()
     exercises = EXERCISES_BY_DAY.get(day_key, {})
+    
+    # Достаем статистику пользователя
+    day_stats = user_stats.get(chat_id, {}).get(day_key, {})
+    
     for ex_id, ex_name in exercises.items():
-        kb.button(text=ex_name, callback_data=f"run_ex_{ex_id}_{day_key}")
+        count = day_stats.get(f"ex_{ex_id}", 0)
+        # Если подходы есть, добавляем значок ✅ и цифру прямо на кнопку
+        btn_text = f"{ex_name} ✅ {count}" if count > 0 else ex_name
+        kb.button(text=btn_text, callback_data=f"run_ex_{ex_id}_{day_key}")
         
     kb.button(text="🏁 Завершить тренировку", callback_data="back_main")
     kb.adjust(1)
@@ -95,10 +101,12 @@ async def show_day_plan(call: types.CallbackQuery):
 async def start_exercises(call: types.CallbackQuery):
     await call.answer()
     day_key = call.data.replace("start_ex_", "")
+    chat_id = call.message.chat.id # Получаем ID пользователя
     
     await call.message.edit_text(
         f"🏃 Тренировка идет. День: {DAY_NAMES.get(day_key)}.\nВыбери упражнение:", 
-        reply_markup=get_exercises_kb(day_key)
+        # Передаем ID пользователя в клавиатуру, чтобы она показала подходы
+        reply_markup=get_exercises_kb(day_key, chat_id)
     )
 
 @dp.callback_query(F.data.startswith("run_ex_"))
@@ -116,6 +124,7 @@ async def select_timer(call: types.CallbackQuery):
     
     await call.message.edit_text("Подход выполнен! Сколько будем отдыхать?", reply_markup=kb.as_markup())
 
+# ТАЙМЕР И СТАТИСТИКА (С ОБРАТНЫМ ОТСЧЕТОМ)
 @dp.callback_query(F.data.startswith("t_"))
 async def run_timer(call: types.CallbackQuery):
     await call.answer()
@@ -127,6 +136,7 @@ async def run_timer(call: types.CallbackQuery):
     
     chat_id = call.message.chat.id
     
+    # 1. Записываем подход
     if chat_id not in user_stats:
         user_stats[chat_id] = {}
     if day_key not in user_stats[chat_id]:
@@ -137,13 +147,22 @@ async def run_timer(call: types.CallbackQuery):
         user_stats[chat_id][day_key][ex_key] = 0
         
     user_stats[chat_id][day_key][ex_key] += 1
+    current_sets = user_stats[chat_id][day_key][ex_key] # Сколько подходов уже сделали
+    ex_name = EXERCISES_BY_DAY[day_key][ex_id].split(" ")[0] # Название без цифр (Например, просто "Отжимания")
 
-    await call.message.edit_text(f"✅ Подход засчитан!\n⏳ Отдых: {seconds} сек...")
-    await asyncio.sleep(seconds)
+    # 2. ЖИВОЙ ТАЙМЕР (шаг 5 секунд)
+    step = 5
+    for remaining in range(seconds, 0, -step):
+        try:
+            await call.message.edit_text(f"✅ {ex_name} (+1)\nВсего выполнено: {current_sets}\n\n⏳ Осталось отдыхать: {remaining} сек...")
+        except:
+            pass # Игнорируем ошибку, если текст не успел обновиться
+        await asyncio.sleep(step)
     
+    # 3. Возвращаем в меню упражнений
     await call.message.edit_text(
         f"💪 Время вышло! Продолжаем тренировку за {DAY_NAMES.get(day_key)}.\nВыбери упражнение:", 
-        reply_markup=get_exercises_kb(day_key)
+        reply_markup=get_exercises_kb(day_key, chat_id)
     )
 
 @dp.callback_query(F.data == "show_stats")
