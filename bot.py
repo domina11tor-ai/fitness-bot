@@ -40,6 +40,7 @@ def get_main_kb():
     kb.button(text="🚀 НАЧАТЬ ТРЕНИРОВКУ", callback_data="start_workout")
     kb.button(text="📊 Моя статистика", callback_data="show_stats")
     kb.button(text="🔄 Сбросить статистику", callback_data="reset")
+    kb.button(text="🔴 YouTube Music", url="https://music.youtube.com/")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -64,8 +65,7 @@ def get_exercises_kb(day_key, chat_id):
     for ex_id, ex_name in exercises.items():
         count = day_stats.get(f"ex_{ex_id}", 0)
         btn_text = f"{ex_name} ✅ {count}" if count > 0 else ex_name
-        # Используем двоеточие (:) как разделитель, чтобы не было путаницы с подчеркиваниями
-        kb.button(text=btn_text, callback_data=f"run_ex:{ex_id}:{day_key}")
+        kb.button(text=btn_text, callback_data=f"run_ex_{ex_id}_{day_key}")
         
     kb.button(text="🏁 Завершить тренировку", callback_data="back_main")
     kb.adjust(1)
@@ -123,30 +123,29 @@ async def start_exercises(call: types.CallbackQuery):
         reply_markup=get_exercises_kb(day_key, chat_id)
     )
 
-# ТЕПЕРЬ ЛОВИМ ДВОЕТОЧИЕ И РАЗБИВАЕМ ПО НЕМУ
-@dp.callback_query(F.data.startswith("run_ex:"))
+@dp.callback_query(F.data.startswith("run_ex_"))
 async def select_timer(call: types.CallbackQuery):
     await call.answer()
-    parts = call.data.split(":")
-    ex_id = parts[1] 
-    day_key = parts[2] 
+    parts = call.data.replace("run_ex_", "").split("_")
+    ex_id = parts[0] 
+    day_key = f"{parts[1]}_{parts[2]}" 
     
     kb = InlineKeyboardBuilder()
-    kb.button(text="⏱ Отдых 30 сек", callback_data=f"t:30:{ex_id}:{day_key}") 
-    kb.button(text="⏱ Отдых 40 сек", callback_data=f"t:40:{ex_id}:{day_key}") 
+    kb.button(text="⏱ Отдых 30 сек", callback_data=f"t_30_{ex_id}_{day_key}") 
+    kb.button(text="⏱ Отдых 40 сек", callback_data=f"t_40_{ex_id}_{day_key}") 
     kb.button(text="⬅️ Назад к упражнениям", callback_data=f"start_ex_{day_key}")
     kb.adjust(1)
     
     await call.message.edit_text("Подход выполнен! Сколько будем отдыхать?", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data.startswith("t:"))
+@dp.callback_query(F.data.startswith("t_"))
 async def run_timer(call: types.CallbackQuery):
     await call.answer()
     
-    parts = call.data.split(":")
+    parts = call.data.split("_")
     seconds = int(parts[1])
     ex_id = parts[2] 
-    day_key = parts[3] 
+    day_key = f"{parts[3]}_{parts[4]}" 
     
     chat_id = call.message.chat.id
     
