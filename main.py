@@ -1,8 +1,5 @@
-import asgi
+import json
 import httpx
-from fastapi import FastAPI, Request
-
-app = FastAPI()
 
 # Ваша тренировочная программа на всю неделю
 PRESETS = {
@@ -79,13 +76,19 @@ async def edit_message(api_url, chat_id, message_id, text, reply_markup=None):
     async with httpx.AsyncClient() as client:
         await client.post(f"{api_url}/editMessageText", json=payload)
 
-@app.post("/")
-async def telegram_webhook(request: Request):
-    # БЕЗОПАСНОСТЬ: Cloudflare сама передает токен из настроек в эту строку!
-    token = request.scope["env"].TELEGRAM_TOKEN
+# Официальный стандартный метод обработки запросов в Cloudflare Workers на чистом Python
+async def on_fetch(request, env, ctx):
+    # Разрешаем только POST запросы от Telegram Webhook
+    if request.method != "POST":
+        return Response.new("Method Not Allowed", status=405)
+        
+    # Извлекаем скрытый токен из настроек Cloudflare
+    token = env.TELEGRAM_TOKEN
     api_url = f"https://telegram.org{token}"
     
-    update = await request.json()
+    # Читаем входящие данные от Telegram
+    body_text = await request.text()
+    update = json.loads(body_text)
     
     # Обработка команды /start
     if "message" in update and "text" in update["message"]:
@@ -94,7 +97,7 @@ async def telegram_webhook(request: Request):
         if message["text"] == "/start":
             await send_message(api_url, chat_id, "Привет! Я твой фитнес-напарник. Выбери раздел:", get_main_keyboard())
             
-    # Обработка нажатий на кнопки
+    # Обработка нажатий на инлайн-кнопки
     elif "callback_query" in update:
         callback = update["callback_query"]
         chat_id = callback["message"]["chat"]["id"]
@@ -120,7 +123,6 @@ async def telegram_webhook(request: Request):
                 await edit_message(api_url, chat_id, message_id, text, start_btn)
                 
         elif data == "alert_timer":
-            # Быстрое всплывающее окно в Telegram вместо зависающего таймера
             async with httpx.AsyncClient() as client:
                 await client.post(f"{api_url}/answerCallbackQuery", json={
                     "callback_query_id": callback["id"],
@@ -129,8 +131,6 @@ async def telegram_webhook(request: Request):
                 })
             await send_message(api_url, chat_id, "🔔 Время пошло. Сделайте глубокий вдох и приготовьтесь к следующему подходу!")
 
-    return {"ok": True}
-
-# Обязательная системная функция для запуска Python-кода внутри Cloudflare Workers
-async def on_fetch(request, env, ctx):
-    return await asgi.fetch(app, request, env)
+    # Возвращаем успешный ответ для Cloudflare
+    from js import Response
+    return Response.new(json.dumps({"ok": True}), status=200, headers={"Content-Type": "application/json"})
