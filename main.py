@@ -1,27 +1,60 @@
-from fastapi import FastAPI, Request
+import asgi
 import httpx
+from fastapi import FastAPI, Request
 
 app = FastAPI()
 
-TOKEN = "8695430253:AAHEsQpe50vFjTCVnFcxIcua56MUTXOSnXM" # Замените на свежий токен
-TELEGRAM_API = f"https://telegram.org{TOKEN}"
-
-# База данных тренировок
+# Ваша тренировочная программа на всю неделю
 PRESETS = {
-    "preset_mon": {"day": "Понедельник", "title": "Грудные и трицепс", "ex": "Классические отжимания, жим гантелей лежа, разводка гантелей, обратные отжимания от стула", "reps": "3-4 по 12-15"},
-    "preset_tue": {"day": "Вторник", "title": "Спина и бицепс", "ex": "Тяга гантели к поясу в наклоне, молотковые сгибания, классические сгибания рук на бицепс", "reps": "3-4 по 12-15"},
-    "preset_wed": {"day": "Среда", "title": "Ноги и пресс", "ex": "Приседания с гантелями, выпады, планка (1 мин), скручивания", "reps": "3-4 по 15-20"},
-    "preset_thu": {"day": "Четверг", "title": "Плечи и трицепс", "ex": "Жим гантелей вверх стоя, махи гантелями в стороны, отжимания с узкой постановкой рук", "reps": "3-4 по 12"},
-    "preset_fri": {"day": "Пятница", "title": "Спина и бицепс (повтор)", "ex": "Становая тяга с гантелями (на прямых ногах), тяга гантели одной рукой, концентрированный подъем на бицепс", "reps": "3-4 по 12-15"},
-    "preset_sat": {"day": "Суббота", "title": "Грудь и ноги (микс)", "ex": "Широкие отжимания, кубковые приседания (гантель у груди), подъем на носки", "reps": "3-4 по 15"},
-    "preset_sun": {"day": "Воскресенье", "title": "Активное восстановление", "ex": "Растяжка всех групп мышц + легкая прогулка", "reps": "20-30 минут"}
+    "preset_mon": {
+        "day": "Понедельник",
+        "title": "Грудные и трицепс",
+        "ex": "Классические отжимания, жим гантелей лежа, разводка гантелей, обратные отжимания от стула",
+        "reps": "3-4 по 12-15"
+    },
+    "preset_tue": {
+        "day": "Вторник",
+        "title": "Спина и бицепс",
+        "ex": "Тяга гантели к поясу в наклоне, молотковые сгибания, классические сгибания рук на бицепс",
+        "reps": "3-4 по 12-15"
+    },
+    "preset_wed": {
+        "day": "Среда",
+        "title": "Ноги и пресс",
+        "ex": "Приседания с гантелями, выпады, планка (1 мин), скручивания",
+        "reps": "3-4 по 15-20"
+    },
+    "preset_thu": {
+        "day": "Четверг",
+        "title": "Плечи и трицепс",
+        "ex": "Жим гантелей вверх стоя, махи гантелями в стороны, отжимания с узкой постановкой рук",
+        "reps": "3-4 по 12"
+    },
+    "preset_fri": {
+        "day": "Пятница",
+        "title": "Спина и бицепс (повтор)",
+        "ex": "Становая тяга с гантелями (на прямых ногах), тяга гантели одной рукой, концентрированный подъем на бицепс",
+        "reps": "3-4 по 12-15"
+    },
+    "preset_sat": {
+        "day": "Суббота",
+        "title": "Грудь и ноги (микс)",
+        "ex": "Широкие отжимания, кубковые приседания (гантель у груди), подъем на носки",
+        "reps": "3-4 по 15"
+    },
+    "preset_sun": {
+        "day": "Воскресенье",
+        "title": "Активное восстановление",
+        "ex": "Растяжка всех групп мышц + легкая прогулка",
+        "reps": "20-30 минут"
+    }
 }
 
 def get_main_keyboard():
     return {
         "inline_keyboard": [
             [{"text": "📋 Готовые варианты по дням", "callback_data": "open_presets"}],
-            [{"text": "⚙️ Настройки таймера (60с)", "callback_data": "disabled_btn"}]
+            [{"text": "⚙️ Таймер отдыха: 60 сек", "callback_data": "disabled_btn"}]
         ]
     }
 
@@ -32,34 +65,36 @@ def get_presets_keyboard():
     buttons.append([{"text": "⬅️ Назад в меню", "callback_data": "back_to_menu"}])
     return {"inline_keyboard": buttons}
 
-async def send_message(chat_id, text, reply_markup=None):
+async def send_message(api_url, chat_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     async with httpx.AsyncClient() as client:
-        await client.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+        await client.post(f"{api_url}/sendMessage", json=payload)
 
-async def edit_message(chat_id, message_id, text, reply_markup=None):
+async def edit_message(api_url, chat_id, message_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown"}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     async with httpx.AsyncClient() as client:
-        await client.post(f"{TELEGRAM_API}/editMessageText", json=payload)
+        await client.post(f"{api_url}/editMessageText", json=payload)
 
 @app.post("/")
 async def telegram_webhook(request: Request):
+    # БЕЗОПАСНОСТЬ: Cloudflare сама передает токен из настроек в эту строку!
+    token = request.scope["env"].TELEGRAM_TOKEN
+    api_url = f"https://telegram.org{token}"
+    
     update = await request.json()
     
-    # Обработка текстовых команд
+    # Обработка команды /start
     if "message" in update and "text" in update["message"]:
         message = update["message"]
         chat_id = message["chat"]["id"]
-        text = message["text"]
-        
-        if text == "/start":
-            await send_message(chat_id, "Привет! Я твой фитнес-напарник. Выбери нужный раздел:", get_main_keyboard())
+        if message["text"] == "/start":
+            await send_message(api_url, chat_id, "Привет! Я твой фитнес-напарник. Выбери раздел:", get_main_keyboard())
             
-    # Обработка нажатий на кнопки (Callback Query)
+    # Обработка нажатий на кнопки
     elif "callback_query" in update:
         callback = update["callback_query"]
         chat_id = callback["message"]["chat"]["id"]
@@ -67,10 +102,10 @@ async def telegram_webhook(request: Request):
         data = callback["data"]
         
         if data == "open_presets":
-            await edit_message(chat_id, message_id, "📋 Выбери день недели для запуска готовой тренировки:", get_presets_keyboard())
+            await edit_message(api_url, chat_id, message_id, "📋 Выбери день недели для запуска готовой тренировки:", get_presets_keyboard())
             
         elif data == "back_to_menu":
-            await edit_message(chat_id, message_id, "Привет! Я твой фитнес-напарник. Выбери нужный раздел:", get_main_keyboard())
+            await edit_message(api_url, chat_id, message_id, "Привет! Я твой фитнес-напарник. Выбери раздел:", get_main_keyboard())
             
         elif data.startswith("preset_"):
             preset_data = PRESETS.get(data)
@@ -78,23 +113,24 @@ async def telegram_webhook(request: Request):
                 start_btn = {
                     "inline_keyboard": [
                         [{"text": "⏳ Засечь 60 сек отдыха", "callback_data": "alert_timer"}],
-                        [{"text": "⬅️ Назад к дням недели", "action": "open_presets", "callback_data": "open_presets"}]
+                        [{"text": "⬅️ Назад к дням недели", "callback_data": "open_presets"}]
                     ]
                 }
                 text = f"🎯 День: *{preset_data['day']}*\n💪 Тренировка: *{preset_data['title']}*\n\n📋 Упражнения:\n_{preset_data['ex']}_\n\n📊 Схема: *{preset_data['reps']}*"
-                await edit_message(chat_id, message_id, text, start_btn)
+                await edit_message(api_url, chat_id, message_id, text, start_btn)
                 
         elif data == "alert_timer":
-            # Внутри Workers нельзя делать долгие задержки сна.
-            # Вместо этого мы используем встроенный ответ Telegram-уведомления (AnswerCallbackQuery)
+            # Быстрое всплывающее окно в Telegram вместо зависающего таймера
             async with httpx.AsyncClient() as client:
-                await client.post(f"{TELEGRAM_API}/answerCallbackQuery", json={
+                await client.post(f"{api_url}/answerCallbackQuery", json={
                     "callback_query_id": callback["id"],
-                    "text": "⏳ Отсчет пошел! Засеките 60 секунд. Бот пришлет пуш, когда время выйдет.",
+                    "text": "⏳ Время пошло! Засеките 60 секунд отдыха. Отличный подход!",
                     "show_alert": True
                 })
-            # Отправка отложенного уведомления через Cloudflare требует системных очередей (Queues),
-            # поэтому для простоты бот отправляет текстовое напоминание.
-            await send_message(chat_id, "🔔 Время пошло. Сделайте глубокий вдох и приготовьтесь к следующему подходу!")
+            await send_message(api_url, chat_id, "🔔 Время пошло. Сделайте глубокий вдох и приготовьтесь к следующему подходу!")
 
     return {"ok": True}
+
+# Обязательная системная функция для запуска Python-кода внутри Cloudflare Workers
+async def on_fetch(request, env, ctx):
+    return await asgi.fetch(app, request, env)
