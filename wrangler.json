@@ -1,0 +1,8 @@
+{
+  "name": "fitness-bot",
+  "main": "main.py",
+  "compatibility_date": "2026-05-24",
+  "compatibility_flags": [
+    "python_workers"
+  ]
+}
