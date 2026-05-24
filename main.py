@@ -1,7 +1,7 @@
 import json
-import httpx
+import urllib.request
 
-# Ваша тренировочная программа на всю неделю
+# Ваша тренировочная программа на всю неделю из ваших таблиц
 PRESETS = {
     "preset_mon": {
         "day": "Понедельник",
@@ -62,39 +62,43 @@ def get_presets_keyboard():
     buttons.append([{"text": "⬅️ Назад в меню", "callback_data": "back_to_menu"}])
     return {"inline_keyboard": buttons}
 
-async def send_message(api_url, chat_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-    async with httpx.AsyncClient() as client:
-        await client.post(f"{api_url}/sendMessage", json=payload)
+def send_telegram_request(api_url, method, payload):
+    url = f"{api_url}/{method}"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, 
+        data=data, 
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req) as response:
+            response.read()
+    except Exception:
+        pass
 
-async def edit_message(api_url, chat_id, message_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown"}
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-    async with httpx.AsyncClient() as client:
-        await client.post(f"{api_url}/editMessageText", json=payload)
-
-# Точка входа в Cloudflare Workers на Python
+# Точка входа в Cloudflare Workers на чистом Python
 async def on_fetch(request, env, ctx):
     if request.method != "POST":
         from js import Response
         return Response.new("Method Not Allowed", status=405)
         
-    # Достаем секретный токен напрямую из переменных окружения (Environment Variables)
     token = env.TELEGRAM_TOKEN
     api_url = f"https://telegram.org{token}"
     
     body_text = await request.text()
     update = json.loads(body_text)
     
-    # Команда /start
+    # Обработка команды /start
     if "message" in update and "text" in update["message"]:
         message = update["message"]
         chat_id = message["chat"]["id"]
         if message["text"] == "/start":
-            await send_message(api_url, chat_id, "Привет! Я твой фитнес-напарник. Выбери раздел:", get_main_keyboard())
+            send_telegram_request(api_url, "sendMessage", {
+                "chat_id": chat_id,
+                "text": "Привет! Я твой фитнес-напарник. Выбери раздел:",
+                "reply_markup": get_main_keyboard()
+            })
             
     # Обработка инлайн-кнопок
     elif "callback_query" in update:
@@ -104,10 +108,20 @@ async def on_fetch(request, env, ctx):
         data = callback["data"]
         
         if data == "open_presets":
-            await edit_message(api_url, chat_id, message_id, "📋 Выбери день недели для запуска готовой тренировки:", get_presets_keyboard())
+            send_telegram_request(api_url, "editMessageText", {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": "📋 Выбери день недели для запуска готовой тренировки:",
+                "reply_markup": get_presets_keyboard()
+            })
             
         elif data == "back_to_menu":
-            await edit_message(api_url, chat_id, message_id, "Привет! Я твой фитнес-напарник. Выбери раздел:", get_main_keyboard())
+            send_telegram_request(api_url, "editMessageText", {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": "Привет! Я твой фитнес-напарник. Выбери раздел:",
+                "reply_markup": get_main_keyboard()
+            })
             
         elif data.startswith("preset_"):
             preset_data = PRESETS.get(data)
@@ -119,16 +133,24 @@ async def on_fetch(request, env, ctx):
                     ]
                 }
                 text = f"🎯 День: *{preset_data['day']}*\n💪 Тренировка: *{preset_data['title']}*\n\n📋 Упражнения:\n_{preset_data['ex']}_\n\n📊 Схема: *{preset_data['reps']}*"
-                await edit_message(api_url, chat_id, message_id, text, start_btn)
+                send_telegram_request(api_url, "editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                    "reply_markup": start_btn
+                })
                 
         elif data == "alert_timer":
-            async with httpx.AsyncClient() as client:
-                await client.post(f"{api_url}/answerCallbackQuery", json={
-                    "callback_query_id": callback["id"],
-                    "text": "⏳ Время пошло! Засеките 60 секунд отдыха. Отличный подход!",
-                    "show_alert": True
-                })
-            await send_message(api_url, chat_id, "🔔 Время пошло. Сделайте глубокий вдох и приготовьтесь к следующему подходу!")
+            send_telegram_request(api_url, "answerCallbackQuery", {
+                "callback_query_id": callback["id"],
+                "text": "⏳ Время пошло! Засеките 60 секунд отдыха. Отличный подход!",
+                "show_alert": True
+            })
+            send_telegram_request(api_url, "sendMessage", {
+                "chat_id": chat_id,
+                "text": "🔔 Время пошло. Сделайте глубокий вдох и приготовьтесь к следующему подходу!"
+            })
 
     from js import Response
     return Response.new(json.dumps({"ok": True}), status=200, headers={"Content-Type": "application/json"})
