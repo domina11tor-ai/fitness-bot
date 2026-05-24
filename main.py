@@ -76,28 +76,27 @@ async def edit_message(api_url, chat_id, message_id, text, reply_markup=None):
     async with httpx.AsyncClient() as client:
         await client.post(f"{api_url}/editMessageText", json=payload)
 
-# Официальный стандартный метод обработки запросов в Cloudflare Workers на чистом Python
+# Точка входа в Cloudflare Workers на Python
 async def on_fetch(request, env, ctx):
-    # Разрешаем только POST запросы от Telegram Webhook
     if request.method != "POST":
+        from js import Response
         return Response.new("Method Not Allowed", status=405)
         
-    # Извлекаем скрытый токен из настроек Cloudflare
+    # Достаем секретный токен напрямую из переменных окружения (Environment Variables)
     token = env.TELEGRAM_TOKEN
     api_url = f"https://telegram.org{token}"
     
-    # Читаем входящие данные от Telegram
     body_text = await request.text()
     update = json.loads(body_text)
     
-    # Обработка команды /start
+    # Команда /start
     if "message" in update and "text" in update["message"]:
         message = update["message"]
         chat_id = message["chat"]["id"]
         if message["text"] == "/start":
             await send_message(api_url, chat_id, "Привет! Я твой фитнес-напарник. Выбери раздел:", get_main_keyboard())
             
-    # Обработка нажатий на инлайн-кнопки
+    # Обработка инлайн-кнопок
     elif "callback_query" in update:
         callback = update["callback_query"]
         chat_id = callback["message"]["chat"]["id"]
@@ -131,6 +130,5 @@ async def on_fetch(request, env, ctx):
                 })
             await send_message(api_url, chat_id, "🔔 Время пошло. Сделайте глубокий вдох и приготовьтесь к следующему подходу!")
 
-    # Возвращаем успешный ответ для Cloudflare
     from js import Response
     return Response.new(json.dumps({"ok": True}), status=200, headers={"Content-Type": "application/json"})
